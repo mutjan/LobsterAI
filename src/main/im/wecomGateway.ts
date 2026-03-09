@@ -23,6 +23,8 @@ export class WecomGateway extends EventEmitter {
   private status: WecomGatewayStatus = { ...DEFAULT_WECOM_STATUS };
   private onMessageCallback?: (message: IMMessage, replyFn: (text: string) => Promise<void>) => Promise<void>;
   private log: (...args: any[]) => void = () => {};
+  /** Guards against concurrent start() calls (TOCTOU protection across await import) */
+  private starting = false;
 
   // Last conversation info for proactive notifications
   private lastConversation: {
@@ -69,7 +71,7 @@ export class WecomGateway extends EventEmitter {
    * Public method for external reconnection triggers (e.g., network events)
    */
   reconnectIfNeeded(): void {
-    if (this.config && !this.status.connected && !this.wsClient) {
+    if (this.config && !this.status.connected && !this.wsClient && !this.starting) {
       this.log('[WeCom Gateway] External reconnection trigger');
       this.start(this.config).catch((err) => {
         console.error('[WeCom Gateway] Reconnection failed:', err.message);
@@ -81,25 +83,33 @@ export class WecomGateway extends EventEmitter {
    * Start WeCom gateway
    */
   async start(config: WecomConfig): Promise<void> {
-    if (this.wsClient) {
-      throw new Error('WeCom gateway already running');
-    }
-    this.config = config;
-
-    if (!config.enabled) {
-      console.log('[WeCom Gateway] WeCom is disabled in config');
+    if (this.wsClient || this.starting) {
+      console.log('[WeCom Gateway] Already running or starting, skipping');
       return;
     }
-
-    if (!config.botId || !config.secret) {
-      throw new Error('WeCom botId 和 secret 必填');
-    }
-
-    this.log = config.debug ? console.log.bind(console) : () => {};
-    console.log('[WeCom Gateway] Starting with @wecom/aibot-node-sdk...');
+    this.starting = true;
+    this.config = config;
 
     try {
+      if (!config.enabled) {
+        console.log('[WeCom Gateway] WeCom is disabled in config');
+        return;
+      }
+
+      if (!config.botId || !config.secret) {
+        throw new Error('WeCom botId 和 secret 必填');
+      }
+
+      this.log = config.debug ? console.log.bind(console) : () => {};
+      console.log('[WeCom Gateway] Starting with @wecom/aibot-node-sdk...');
+
       const { WSClient, generateReqId } = await import('@wecom/aibot-node-sdk');
+
+      // Re-check after await: stop() may have been called during the import
+      if (!this.starting) {
+        console.log('[WeCom Gateway] Start cancelled during SDK import');
+        return;
+      }
 
       this.wsClient = new WSClient({
         botId: config.botId,
@@ -176,6 +186,8 @@ export class WecomGateway extends EventEmitter {
       this.status.lastError = error.message;
       this.emit('error', error);
       throw error;
+    } finally {
+      this.starting = false;
     }
   }
 
@@ -183,12 +195,15 @@ export class WecomGateway extends EventEmitter {
    * Stop WeCom gateway
    */
   async stop(): Promise<void> {
+    // Cancel any in-progress start() so it won't create a new client after we stop
+    this.starting = false;
+
     if (!this.wsClient) {
       this.log('[WeCom Gateway] Not running');
       return;
     }
 
-    this.log('[WeCom Gateway] Stopping...');
+    console.log('[WeCom Gateway] Stopping...');
 
     try {
       this.wsClient.disconnect();
@@ -199,7 +214,7 @@ export class WecomGateway extends EventEmitter {
     this.cleanup();
     this.status = { ...DEFAULT_WECOM_STATUS };
 
-    this.log('[WeCom Gateway] Stopped');
+    console.log('[WeCom Gateway] Stopped');
     this.emit('disconnected');
   }
 

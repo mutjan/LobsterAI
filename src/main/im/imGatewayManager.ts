@@ -75,6 +75,9 @@ export class IMGatewayManager extends EventEmitter {
   // NIM probe mutex: serializes concurrent connectivity tests
   private nimProbePromise: Promise<void> | null = null;
 
+  // Per-platform restart mutex: prevents concurrent restart of the same gateway
+  private restartingPlatforms = new Set<IMPlatform>();
+
   constructor(db: Database, saveDb: () => void, options?: IMGatewayManagerOptions) {
     super();
 
@@ -602,12 +605,22 @@ export class IMGatewayManager extends EventEmitter {
   /**
    * Restart a specific gateway (stop then start with latest config)
    * Used for hot-reloading when credentials change at runtime.
+   * Serialized per-platform to prevent concurrent restart of the same gateway.
    */
   private async restartGateway(platform: IMPlatform): Promise<void> {
-    console.log(`[IMGatewayManager] Restarting ${platform} gateway...`);
-    await this.stopGateway(platform);
-    await this.startGateway(platform);
-    console.log(`[IMGatewayManager] ${platform} gateway restarted successfully`);
+    if (this.restartingPlatforms.has(platform)) {
+      console.log(`[IMGatewayManager] ${platform} restart already in progress, skipping`);
+      return;
+    }
+    this.restartingPlatforms.add(platform);
+    try {
+      console.log(`[IMGatewayManager] Restarting ${platform} gateway...`);
+      await this.stopGateway(platform);
+      await this.startGateway(platform);
+      console.log(`[IMGatewayManager] ${platform} gateway restarted successfully`);
+    } finally {
+      this.restartingPlatforms.delete(platform);
+    }
   }
 
   // ==================== Status ====================
