@@ -306,6 +306,12 @@ export function anthropicToOpenAI(body: unknown): Record<string, unknown> {
     output.tool_choice = source.tool_choice;
   }
 
+  // Note: We explicitly do NOT copy 'thinking' from the Anthropic request.
+  // The 'thinking' parameter is Anthropic-specific and not supported by
+  // OpenAI-compatible APIs (including Poe). It causes validation errors
+  // like "thinking.enabled.budget_tokens: Input should be greater than or equal to 1024".
+  // Reasoning content is handled in the response conversion (openAIToAnthropic).
+
   return output;
 }
 
