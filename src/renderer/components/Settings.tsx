@@ -416,6 +416,11 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
   const [newModelSupportsImage, setNewModelSupportsImage] = useState(false);
   const [modelFormError, setModelFormError] = useState<string | null>(null);
 
+  // State for custom parameters (for custom provider)
+  const [customParamKey, setCustomParamKey] = useState('');
+  const [customParamValue, setCustomParamValue] = useState('');
+  const [customParamType, setCustomParamType] = useState<'string' | 'number' | 'boolean'>('string');
+
   // About tab
   const [appVersion, setAppVersion] = useState('');
   const [emailCopied, setEmailCopied] = useState(false);
@@ -1353,6 +1358,57 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
     setNewModelId('');
     setNewModelSupportsImage(false);
     setModelFormError(null);
+  };
+
+  // Handlers for custom parameters
+  const handleAddCustomParam = () => {
+    const key = customParamKey.trim();
+    const value = customParamValue.trim();
+
+    if (!key) return;
+
+    let parsedValue: string | number | boolean = value;
+    if (customParamType === 'number') {
+      parsedValue = Number(value);
+      if (isNaN(parsedValue)) return;
+    } else if (customParamType === 'boolean') {
+      parsedValue = value.toLowerCase() === 'true' || value === '1' || value.toLowerCase() === 'yes';
+    }
+
+    const currentParams = providers.custom.customParams ?? {};
+    setProviders(prev => ({
+      ...prev,
+      custom: {
+        ...prev.custom,
+        customParams: {
+          ...currentParams,
+          [key]: parsedValue
+        }
+      }
+    }));
+
+    setCustomParamKey('');
+    setCustomParamValue('');
+    setCustomParamType('string');
+  };
+
+  const handleDeleteCustomParam = (key: string) => {
+    const currentParams = { ...(providers.custom.customParams ?? {}) };
+    delete currentParams[key];
+    setProviders(prev => ({
+      ...prev,
+      custom: {
+        ...prev.custom,
+        customParams: currentParams
+      }
+    }));
+  };
+
+  const handleCustomParamKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddCustomParam();
+    }
   };
 
   const handleModelDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2695,6 +2751,91 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                   {isTesting ? i18nService.t('testing') : i18nService.t('testConnection')}
                 </button>
               </div>
+
+              {/* Custom Parameters (only for custom provider) */}
+              {activeProvider === 'custom' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-medium dark:text-claude-darkText text-claude-text">
+                      {i18nService.t('customParameters') || '自定义参数'}
+                    </h3>
+                  </div>
+
+                  {/* Existing Custom Params List */}
+                  {providers.custom.customParams && Object.keys(providers.custom.customParams).length > 0 && (
+                    <div className="space-y-1.5">
+                      {Object.entries(providers.custom.customParams).map(([key, value]) => (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between dark:bg-claude-darkSurface/50 bg-claude-surface/50 p-2 rounded-xl dark:border-claude-darkBorder border-claude-border border"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[11px] font-medium dark:text-claude-darkText text-claude-text">{key}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 bg-claude-surfaceHover dark:bg-claude-darkSurfaceHover rounded-md dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                              {typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value)}
+                            </span>
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-claude-accent/10 text-claude-accent/70">
+                              {typeof value}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomParam(key)}
+                            className="p-0.5 dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-500 transition-opacity"
+                          >
+                            <TrashIcon className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add New Custom Param */}
+                  <div className="flex items-start space-x-2">
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          value={customParamKey}
+                          onChange={(e) => setCustomParamKey(e.target.value)}
+                          onKeyDown={handleCustomParamKeyDown}
+                          placeholder={i18nService.t('paramKey') || '参数名'}
+                          className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text focus:outline-none focus:ring-1 focus:ring-claude-accent"
+                        />
+                        <select
+                          value={customParamType}
+                          onChange={(e) => setCustomParamType(e.target.value as 'string' | 'number' | 'boolean')}
+                          className="px-2 py-1.5 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text focus:outline-none focus:ring-1 focus:ring-claude-accent"
+                        >
+                          <option value="string">string</option>
+                          <option value="number">number</option>
+                          <option value="boolean">boolean</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        value={customParamValue}
+                        onChange={(e) => setCustomParamValue(e.target.value)}
+                        onKeyDown={handleCustomParamKeyDown}
+                        placeholder={customParamType === 'boolean' ? 'true / false' : i18nService.t('paramValue') || '参数值'}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text focus:outline-none focus:ring-1 focus:ring-claude-accent"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddCustomParam}
+                      disabled={!customParamKey.trim()}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-claude-accent text-white hover:bg-claude-accentHover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {i18nService.t('add') || '添加'}
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-claude-secondaryText dark:text-claude-darkSecondaryText">
+                    {i18nService.t('customParamsHint') || '自定义参数将合并到 API 请求体中，如 temperature、top_p 等'}
+                  </p>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">

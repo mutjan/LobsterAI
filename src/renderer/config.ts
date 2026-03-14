@@ -190,6 +190,7 @@ export interface AppConfig {
         name: string;
         supportsImage?: boolean;
       }>;
+      customParams?: Record<string, string | number | boolean>;
     };
     [key: string]: {
       enabled: boolean;
@@ -202,6 +203,7 @@ export interface AppConfig {
         name: string;
         supportsImage?: boolean;
       }>;
+      customParams?: Record<string, string | number | boolean>;
     };
   };
   // 主题配置
@@ -396,7 +398,8 @@ export const defaultConfig: AppConfig = {
       apiKey: '',
       baseUrl: '',
       apiFormat: 'openai',
-      models: []
+      models: [],
+      customParams: {}
     }
   },
   theme: 'system',

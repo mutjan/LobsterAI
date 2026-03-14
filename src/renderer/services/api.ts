@@ -19,6 +19,7 @@ export interface ApiConfig {
   baseUrl: string;
   provider?: string;
   apiFormat?: 'anthropic' | 'openai';
+  customParams?: Record<string, string | number | boolean>;
 }
 
 export class ApiError extends Error {
@@ -361,6 +362,7 @@ class ApiService {
           baseUrl,
           provider: provider,
           apiFormat,
+          customParams: providerConfig.customParams,
         };
       }
     }
@@ -475,6 +477,11 @@ class ApiService {
         };
         // Thinking 模型需要更大的 max_tokens
         requestBody.max_tokens = 16000;
+      }
+
+      // 合并自定义参数（ Anthropic 格式）
+      if (config.customParams && Object.keys(config.customParams).length > 0) {
+        Object.assign(requestBody, config.customParams);
       }
 
       return new Promise((resolve, reject) => {
@@ -754,6 +761,11 @@ class ApiService {
             };
         if (useResponsesApi && systemInstructions) {
           requestBody.instructions = systemInstructions;
+        }
+
+        // 合并自定义参数（OpenAI 格式）
+        if (config.customParams && Object.keys(config.customParams).length > 0) {
+          Object.assign(requestBody, config.customParams);
         }
 
         window.electron.api.stream({
